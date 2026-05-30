@@ -93,6 +93,11 @@ def _add_write_subparsers(sub: argparse._SubParsersAction) -> None:
         metavar="REF",
         help="cross-link: 'Topic#YYYY-MM-DD [HH:MM] — Title' (repeatable)",
     )
+    p_add.add_argument(
+        "--author",
+        metavar="NAME",
+        help="author name appended as '_author: NAME_' line at bottom of entry",
+    )
 
     p_amend = sub.add_parser(
         "amend", help="replace body of entry (newest in topic by default)"
@@ -117,7 +122,9 @@ def _add_write_subparsers(sub: argparse._SubParsersAction) -> None:
         help="rewrite Related line with these refs (repeatable)",
     )
     p_amend.add_argument(
-        "--no-related", action="store_true", help="drop existing Related line"
+        "--author",
+        metavar="NAME",
+        help="rewrite author line with NAME (default: preserve existing)",
     )
 
     p_addend = sub.add_parser(
@@ -141,6 +148,11 @@ def _add_write_subparsers(sub: argparse._SubParsersAction) -> None:
         default=[],
         metavar="REF",
         help="append refs to Related line, deduped (repeatable)",
+    )
+    p_addend.add_argument(
+        "--author",
+        metavar="NAME",
+        help="set/replace author line with NAME (default: preserve existing)",
     )
 
     p_retitle = sub.add_parser("retitle", help="rename existing entry")
@@ -399,6 +411,7 @@ def _dispatch_topic_aware(args: argparse.Namespace) -> None:
             args.title,
             _resolve_bodies(args.entry),
             args.related or None,
+            args.author,
         ),
         "amend": lambda: cmd_amend(
             folder,
@@ -407,7 +420,7 @@ def _dispatch_topic_aware(args: argparse.Namespace) -> None:
             args.date,
             args.title,
             args.related or None,
-            args.no_related,
+            args.author,
         ),
         "addend": lambda: cmd_addend(
             folder,
@@ -416,6 +429,7 @@ def _dispatch_topic_aware(args: argparse.Namespace) -> None:
             args.date,
             args.title,
             args.related or None,
+            args.author,
         ),
         "retitle": lambda: cmd_retitle(
             folder, write_topic, args.date, args.title, args.new_title

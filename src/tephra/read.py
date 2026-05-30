@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from .dates import parse_date_arg
 from .related import find_related_line, split_related_links
 from .store import (
+    AUTHOR_PAT,
     Entry,
     RELATED_PAT,
     parse_entries,
@@ -71,11 +72,26 @@ def _all_entries(folder: str | None, topic: str | None) -> list[HydratedEntry]:
     return out
 
 
-def _body_without_related(body: list[str]) -> list[str]:
-    idx = find_related_line(body)
-    if idx is None:
-        return body
-    return body[:idx]
+def _find_author_line(body: list[str]) -> int | None:
+    for i, line in enumerate(body):
+        if AUTHOR_PAT.match(line):
+            return i
+    return None
+
+
+def _body_content(body: list[str]) -> list[str]:
+    """Return body with trailing Related and author lines stripped."""
+    cut = len(body)
+    a = _find_author_line(body)
+    if a is not None:
+        cut = min(cut, a)
+    r = find_related_line(body[:cut])
+    if r is not None:
+        cut = min(cut, r)
+    out = list(body[:cut])
+    while out and not out[-1].strip():
+        out.pop()
+    return out
 
 
 def _related_links(body: list[str]) -> list[str]:
@@ -86,6 +102,14 @@ def _related_links(body: list[str]) -> list[str]:
     if not m:
         return []
     return split_related_links(m.group(1))
+
+
+def _author(body: list[str]) -> str | None:
+    idx = _find_author_line(body)
+    if idx is None:
+        return None
+    m = AUTHOR_PAT.match(body[idx])
+    return m.group(1) if m else None
 
 
 def _entry_label(h: HydratedEntry) -> str:
@@ -101,8 +125,9 @@ def _entry_dict(h: HydratedEntry) -> dict:
         "date": h.entry.date,
         "time": h.entry.time,
         "title": h.entry.title,
-        "body": "".join(_body_without_related(h.body)).strip(),
+        "body": "".join(_body_content(h.body)).strip(),
         "related": _related_links(h.body),
+        "author": _author(h.body),
     }
 
 
@@ -172,7 +197,7 @@ def _find_haystack(h: HydratedEntry, field: str) -> str:
     """Return the lowercased haystack for ``cmd_find`` based on ``field`` scope."""
     if field == "title":
         return h.entry.title.lower()
-    body = "".join(_body_without_related(h.body))
+    body = "".join(_body_content(h.body))
     if field == "body":
         return body.lower()
     return (h.entry.title + "\n" + body).lower()

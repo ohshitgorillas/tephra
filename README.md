@@ -18,6 +18,7 @@ Getting information out of the log for agents was its own hurdle: `grep` doesn't
 
 - A clean, simple CLI for keeping and reading a timestamped log.
 - Optional `**Related:**` line per entry holding `[[Topic#anchor]]` wikilinks to specific cross-topic entries. Cross-link targets are validated on insert.
+- Optional `_author: NAME_` line per entry recording who wrote it, set with `--author`. Treated as metadata: kept out of the body and out of `find` searches.
 - Atomic writes (tempfile + `os.replace`), so a crash mid-write cannot leave a file corrupt.
 - A file lock around every write, so concurrent `tephra` invocations on the same host serialize cleanly instead of clobbering each other.
 - A private git repo at the vault root that auto-commits every CLI write. Direct edits to topic files (with Obsidian, `vim`, `sed`, an editor plugin, whatever) are detected on the next CLI invocation and committed as `manual edit (captured)`, so nothing slips past the history.
@@ -79,6 +80,12 @@ tephra add -T O11y -t "Title" -e "body" \
   --related "Bittorrent#2026-04-24 — peer port metric"
 ```
 
+Record who wrote an entry with `--author NAME`. It appends an `_author: NAME_` line at the bottom of the entry (below any Related line), kept out of the body text and excluded from `find` searches but surfaced as `author` in `--json`. Works on `add`/`amend`/`addend`; `amend` and `addend` preserve an existing author unless `--author` overrides it.
+
+```sh
+tephra add -T O11y -t "Title" -e "body" --author clod
+```
+
 Read commands (cross-topic by default; pass `-T TOPIC` to restrict to one topic, or `-T Folder:` to restrict to all topics in a folder):
 
 ```sh
@@ -99,7 +106,7 @@ Edit commands (default to newest entry in the topic; pass `-d` + `-t` to target 
 ```sh
 tephra amend -T TOPIC -e "new body"                          # replace body; preserves Related
 tephra amend -T TOPIC -e "new body" --related "Topic#anchor" # rewrite Related
-tephra amend -T TOPIC -e "new body" --no-related             # drop Related
+tephra add -T TOPIC -t "Title" -e "body" --author clod       # record author
 tephra addend -T TOPIC -e "extra para"                       # append paragraph above any Related
 tephra addend -T TOPIC -e "" --related "Topic#anchor"        # extend Related only (deduped)
 tephra retitle -T TOPIC -d 2026-04-28 -t "Old" --to "New"
@@ -160,6 +167,7 @@ Each topic file looks like:
 Body.
 
 **Related:** [[Topic2#2026-04-27 — earlier entry]]
+_author: clod_
 
 ## 2026-04-27 09:15 — older entry
 

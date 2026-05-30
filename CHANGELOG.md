@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-05-30
+
+### Added
+
+- `--author NAME` flag on `add`/`amend`/`addend`. Appends an `_author: NAME_` metadata line at the bottom of the entry (below any `**Related:**` line). Excluded from the `body` field and from `find` search; surfaced as `author` in `--json`. On `amend`/`addend` the existing author is preserved unless `--author` overrides it.
+
+### Removed
+
+- `tephra amend --no-related` flag (added in 3.0.0, never released). To drop a Related line during a body rewrite, edit the topic file directly (auto-captured on the next CLI write). `add`/`addend` never needed it — omit `--related`.
+
 ## [3.0.1] - 2026-05-01
 
 ### Added

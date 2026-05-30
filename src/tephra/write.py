@@ -16,6 +16,7 @@ from .related import (
     validate_link,
 )
 from .store import (
+    AUTHOR_PAT,
     Entry,
     RELATED_PAT,
     find_entry,
@@ -80,12 +81,17 @@ def _resolve_target(
     return entries[0]
 
 
+def _format_author_line(name: str) -> str:
+    return f"_author: {name}_"
+
+
 def _build_block(
     date: str,
     time: str,
     title: str,
     body: str,
     related_line: str | None,
+    author: str | None,
 ) -> list[str]:
     """Build the lines for a new entry, ready to splice into a topic file."""
     out: list[str] = [f"## {date} {time} — {title}\n", "\n"]
@@ -97,6 +103,9 @@ def _build_block(
     if related_line:
         out.append(related_line + "\n")
         out.append("\n")
+    if author:
+        out.append(_format_author_line(author) + "\n")
+        out.append("\n")
     return out
 
 
@@ -106,6 +115,7 @@ def insert_entry(
     title: str,
     body: str,
     related_refs: list[str] | None,
+    author: str | None = None,
 ) -> None:
     """Add a new entry at the top of ``topic.md``."""
     validate_topic(folder, topic)
@@ -123,7 +133,7 @@ def insert_entry(
                 f"Entry '{title}' already exists on {date} in topic '{label}'. "
                 f"Use a different title or `tephra amend`/`addend`."
             )
-        block = _build_block(date, time, title, body, related_line)
+        block = _build_block(date, time, title, body, related_line, author)
         pos = insertion_point(lines)
         if pos > 0 and lines[pos - 1].strip() != "":
             block = ["\n"] + block
@@ -152,21 +162,19 @@ def _existing_related(body_lines: list[str]) -> str | None:
     return None
 
 
-def _resolve_amend_related(
-    existing: str | None,
-    new_line: str | None,
-    drop: bool,
-) -> str | None:
-    """Decide which Related line to write on amend."""
-    if drop:
-        return None
-    if new_line is not None:
-        return new_line
-    return existing
+def _existing_author(body_lines: list[str]) -> str | None:
+    """Return the existing author name, or None."""
+    for line in body_lines:
+        m = AUTHOR_PAT.match(line)
+        if m:
+            return m.group(1)
+    return None
 
 
-def _build_body_block(body_text: str, related_line: str | None) -> list[str]:
-    """Build the new-body section (leading blank, content, optional Related line)."""
+def _build_body_block(
+    body_text: str, related_line: str | None, author: str | None
+) -> list[str]:
+    """Build the new-body section (leading blank, content, optional Related/author lines)."""
     out: list[str] = ["\n"]
     body = auto_backtick_html_tags(body_text).strip("\n")
     if body:
@@ -175,6 +183,9 @@ def _build_body_block(body_text: str, related_line: str | None) -> list[str]:
         out.append("\n")
     if related_line:
         out.append(related_line + "\n")
+        out.append("\n")
+    if author:
+        out.append(_format_author_line(author) + "\n")
         out.append("\n")
     return out
 
@@ -186,39 +197,53 @@ def cmd_amend(
     date_arg: str | None = None,
     title: str | None = None,
     related_refs: list[str] | None = None,
-    drop_related: bool = False,
+    author: str | None = None,
 ) -> None:
     """Replace the body of an entry, preserving the heading.
 
-    By default the existing ``**Related:**`` line is preserved. Pass
-    ``related_refs`` to rewrite it, or ``drop_related=True`` to drop it.
+    Existing Related and author lines are preserved unless overridden by
+    ``related_refs`` or ``author``.
     """
     validate_topic(folder, topic)
-    if related_refs and drop_related:
-        sys.exit("--related and --no-related are mutually exclusive")
     new_related_line = format_related_line(related_refs) if related_refs else None
     path = topic_path(topic, folder)
     label = _label(folder, topic)
     with write_lock():
         lines = read_lines(path)
         entry = _resolve_target(topic, lines, date_arg, title)
-        existing = _existing_related(_entry_body_lines(lines, entry))
-        related_line = _resolve_amend_related(existing, new_related_line, drop_related)
-        new_body = _build_body_block(new_text, related_line)
+        body_lines = _entry_body_lines(lines, entry)
+        related_line = (
+            new_related_line
+            if new_related_line is not None
+            else _existing_related(body_lines)
+        )
+        author_name = author if author is not None else _existing_author(body_lines)
+        new_body = _build_body_block(new_text, related_line, author_name)
         lines = lines[: entry.start + 1] + new_body + lines[entry.end :]
         write_lines(path, lines)
         git_snapshot(f"amend: [{label}] {entry.title}")
     print(f"Amended: [{label}] {entry.date} — {entry.title}")
 
 
-def _split_body_at_related(body: list[str]) -> tuple[list[str], list[str]]:
-    """Return ``(content_before_related, existing_related_links)``."""
-    related_idx = find_related_line(body)
+def _split_body_at_meta(
+    body: list[str],
+) -> tuple[list[str], list[str], str | None]:
+    """Return ``(content_before_meta, existing_related_links, existing_author)``."""
+    author_name: str | None = None
+    cut = len(body)
+    for i, line in enumerate(body):
+        m = AUTHOR_PAT.match(line)
+        if m:
+            author_name = m.group(1)
+            cut = min(cut, i)
+            break
+    head = body[:cut]
+    related_idx = find_related_line(head)
     if related_idx is None:
-        return list(body), []
-    m = RELATED_PAT.match(body[related_idx])
+        return list(head), [], author_name
+    m = RELATED_PAT.match(head[related_idx])
     links = split_related_links(m.group(1)) if m else []
-    return list(body[:related_idx]), links
+    return list(head[:related_idx]), links, author_name
 
 
 def _append_paragraph(content: list[str], paragraph: str) -> list[str]:
@@ -258,6 +283,12 @@ def _related_tail(links: list[str]) -> list[str]:
     return ["**Related:** " + ", ".join(links) + "\n", "\n"]
 
 
+def _author_tail(name: str | None) -> list[str]:
+    if not name:
+        return []
+    return [_format_author_line(name) + "\n", "\n"]
+
+
 def cmd_addend(
     folder: str | None,
     topic: str,
@@ -265,11 +296,13 @@ def cmd_addend(
     date_arg: str | None = None,
     title: str | None = None,
     related_refs: list[str] | None = None,
+    author: str | None = None,
 ) -> None:
-    """Append a paragraph to an entry's body (above any Related line).
+    """Append a paragraph to an entry's body (above any Related/author lines).
 
     If ``related_refs`` is given, each ref is appended to the existing
-    Related line (deduped). If no Related line exists yet, one is created.
+    Related line (deduped). If ``author`` is given, the author line is
+    set/replaced; otherwise the existing author is preserved.
     """
     validate_topic(folder, topic)
     path = topic_path(topic, folder)
@@ -277,11 +310,14 @@ def cmd_addend(
     with write_lock():
         lines = read_lines(path)
         entry = _resolve_target(topic, lines, date_arg, title)
-        content, links = _split_body_at_related(_entry_body_lines(lines, entry))
+        content, links, existing_author = _split_body_at_meta(
+            _entry_body_lines(lines, entry)
+        )
         content = _append_paragraph(content, new_text)
         if related_refs:
             links = _merge_related_links(links, related_refs)
-        new_body = content + _related_tail(links)
+        author_name = author if author is not None else existing_author
+        new_body = content + _related_tail(links) + _author_tail(author_name)
         if not new_body or new_body[-1].strip():
             new_body.append("\n")
         lines = lines[: entry.start + 1] + new_body + lines[entry.end :]

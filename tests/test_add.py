@@ -55,3 +55,56 @@ def test_dash_e_reads_stdin(run, topic, last_json):
 def test_html_token_auto_backticked(run, topic, last_json):
     run("add", "-T", topic, "-t", "t", "-e", "uses <name> token")
     assert "`<name>`" in last_json()["body"]
+
+
+def test_add_with_name_records_author(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "body", "--author", "clod")
+    assert last_json()["author"] == "clod"
+
+
+def test_add_without_name_has_null_author(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "body")
+    assert last_json()["author"] is None
+
+
+def test_amend_preserves_existing_author(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "orig", "--author", "clod")
+    run("amend", "-T", topic, "-e", "rewritten")
+    j = last_json()
+    assert j["author"] == "clod"
+    assert "rewritten" in j["body"]
+
+
+def test_amend_replaces_author_with_name_flag(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "orig", "--author", "clod")
+    run("amend", "-T", topic, "-e", "rewritten", "--author", "atom")
+    assert last_json()["author"] == "atom"
+
+
+def test_addend_preserves_author_below_paragraph(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "first", "--author", "clod")
+    run("addend", "-T", topic, "-e", "second")
+    j = last_json()
+    assert j["author"] == "clod"
+    assert j["body"].index("first") < j["body"].index("second")
+
+
+def test_addend_sets_author_when_missing(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "first")
+    run("addend", "-T", topic, "-e", "second", "--author", "atom")
+    assert last_json()["author"] == "atom"
+
+
+def test_author_line_at_bottom_of_raw_file(run, topic, vault):
+    run("add", "-T", topic, "-t", "t", "-e", "body", "--author", "clod")
+    text = (vault / f"{topic}.md").read_text()
+    assert "_author: clod_" in text
+    body_lines = [ln for ln in text.splitlines() if ln.strip()]
+    assert body_lines[-1] == "_author: clod_"
+
+
+def test_author_excluded_from_body_field(run, topic, last_json):
+    run("add", "-T", topic, "-t", "t", "-e", "real body", "--author", "clod")
+    body = last_json()["body"]
+    assert "real body" in body
+    assert "author" not in body

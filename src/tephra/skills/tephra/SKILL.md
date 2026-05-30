@@ -85,6 +85,14 @@ tephra add -T O11y -t "Title" -e "body" \
 
 `--related` is repeatable. Anchor format: `Topic#YYYY-MM-DD [HH:MM] — Title`. Refs are validated against the target topic file (exact match required).
 
+Record authorship with `--author NAME`:
+
+```sh
+tephra add -T TOPIC -t "Title" -e "body" --author clod
+```
+
+Appends an `_author: NAME_` line at the bottom of the entry (below any Related line). Parsed as metadata: excluded from the `body` field, surfaced as `author` in `--json`, and not searched by `find`. On `amend`/`addend` the existing author is preserved unless `--author` overrides it. Use the agent's name (`clod`) for agent-written entries, `atom` for hand-written ones.
+
 ## Topic management
 
 ```sh
@@ -105,7 +113,6 @@ Default target = newest entry in the topic. Pass `-d YYYY-MM-DD -t "Title"` (or 
 | Append paragraph + extend Related line | `tephra addend -T TOPIC -e "..." --related "Topic#anchor"` |
 | Replace body, keep heading + Related | `tephra amend -T TOPIC -e "new body"` |
 | Replace body + rewrite Related | `tephra amend -T TOPIC -e "..." --related "Topic#anchor"` |
-| Replace body + drop Related | `tephra amend -T TOPIC -e "..." --no-related` |
 | Rename | `tephra retitle -T TOPIC -d 2026-04-28 -t "Old" --to "New"` |
 | Delete | `tephra rm -T TOPIC -d 2026-04-28 -t "Title"` |
 | Preview delete | `tephra rm -T TOPIC -d 2026-04-28 -t "Title" -n` |
