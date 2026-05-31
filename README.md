@@ -8,7 +8,7 @@ The format is hand-editable in any text editor and renders cleanly in [Obsidian]
 
 I keep a log to track homelab changes. `git` doesn't fit (`/` would be an absurd repo) and the changes I care about span multiple systems anyway. Any significant configuration changes, package installations, etc. were recorded in `~/devlog.md`.
 
-Enter Claude Code: agents work faster than I can, but getting them to log their actions consistently was insanely frustrating. Despite explicit instructions in `CLAUDE.md`, agents would freestyle the format, create duplicate date headers or simply enter the wrong date, append instead of prepend, etc. It took no less than five frustrated prompts per session to keep the devlog consistent.
+Enter Claude Code and its ilk: agents work faster than I can, but getting them to log their actions consistently was insanely frustrating. Despite explicit instructions in `CLAUDE.md`, agents would freestyle the format, create duplicate date headers or simply enter a fabricated timestamp, append instead of prepend, etc. It took no less than five frustrated prompts per session to keep the devlog consistent.
 
 Getting information out of the log for agents was its own hurdle: `grep` doesn't work when entires span multiple lines, so your choices are to either copy-paste by hand or dump the whole file and burn context on noise.
 
@@ -20,7 +20,6 @@ Getting information out of the log for agents was its own hurdle: `grep` doesn't
 - Optional `**Related:**` line per entry holding `[[Topic#anchor]]` wikilinks to specific cross-topic entries. Cross-link targets are validated on insert.
 - Optional `_author: NAME_` line per entry recording who wrote it, set with `--author`. Treated as metadata: kept out of the body and out of `find` searches.
 - Atomic writes (tempfile + `os.replace`), so a crash mid-write cannot leave a file corrupt.
-- A file lock around every write, so concurrent `tephra` invocations on the same host serialize cleanly instead of clobbering each other.
 - A private git repo at the vault root that auto-commits every CLI write. Direct edits to topic files (with Obsidian, `vim`, `sed`, an editor plugin, whatever) are detected on the next CLI invocation and committed as `manual edit (captured)`, so nothing slips past the history.
 - Read commands (`show`, `find`, `within`, `list`, `last`) with optional `--json` output, suitable for piping into other tools or AI agents. Cross-topic by default; `-T TOPIC` filters.
 - Edit commands (`amend`, `addend`, `retitle`, `rm`) that target the newest entry in a topic by default, or any entry via `--date` + `--title`.
@@ -52,7 +51,7 @@ Editable install: changes to the source take effect immediately.
 
 ## Usage
 
-Create a topic (only way to add topics — `add` will refuse unknown topics):
+Create a new topic:
 
 ```sh
 tephra topic add Notes
@@ -62,16 +61,10 @@ tephra topic list
 Add a new entry under a topic:
 
 ```sh
-tephra add -T Notes -t "Brief title" -e "What changed, files touched, why."
+tephra add -T Notes -t "Brief title" -e "Body of entry, paragraph 1" -e "Body of entry, paragraph 2"
 ```
 
-`-e` is repeatable for multi-paragraph bodies (joined on blank lines, in CLI order):
-
-```sh
-tephra add -T Notes -t "Two paragraphs" \
-  -e "First paragraph." \
-  -e "Second paragraph."
-```
+`-e` can be repeated any number of times for additional paragraphs
 
 Cross-link to other entries with `--related` (repeatable, validated):
 
@@ -83,22 +76,22 @@ tephra add -T O11y -t "Title" -e "body" \
 Record who wrote an entry with `--author NAME`. It appends an `_author: NAME_` line at the bottom of the entry (below any Related line), kept out of the body text and excluded from `find` searches but surfaced as `author` in `--json`. Works on `add`/`amend`/`addend`; `amend` and `addend` preserve an existing author unless `--author` overrides it.
 
 ```sh
-tephra add -T O11y -t "Title" -e "body" --author clod
+tephra add -T O11y -t "Title" -e "body" --author Claude
 ```
 
 Read commands (cross-topic by default; pass `-T TOPIC` to restrict to one topic, or `-T Folder:` to restrict to all topics in a folder):
 
 ```sh
-tephra show 2026-04-28          # entries on a date
-tephra show 0428                # MMDD: most recent past 04-28
-tephra find "wireguard"         # case-insensitive substring search
-tephra find wg peer             # multiple terms = AND (all must match)
-tephra find "wg" --within 7d    # ... restricted to last 7 days (units: s/m/h/d/w)
-tephra find "wg" --in title     # restrict match to title (or body, or both [default])
-tephra find "wg" --limit 5      # cap to N newest matches
-tephra within 7d                # last 7 days (units: s/m/h/d/w; e.g. 30m, 12h, 2w)
-tephra list                     # headings only, no bodies
-tephra last                     # newest entry
+tephra show 2026-04-28                 # entries on a date
+tephra show 0428                       # MMDD: most recent past 04-28
+tephra find "wireguard"                # case-insensitive substring search
+tephra find wireguard peer             # multiple terms = AND (all must match)
+tephra find "wireguard" --within 7d    # ... restricted to last 7 days (units: s/m/h/d/w)
+tephra find "wireguard" --in title     # restrict match to title (or body, or both [default])
+tephra find "wireguard" --limit 5      # cap to N newest matches
+tephra within 7d                       # last 7 days (units: s/m/h/d/w; e.g. 30m, 12h, 2w)
+tephra list                            # headings only, no bodies
+tephra last                            # newest entry
 ```
 
 Edit commands (default to newest entry in the topic; pass `-d` + `-t` to target a specific one):
@@ -125,7 +118,7 @@ tephra undo                     # revert last commit in data repo
 tephra manual-commit "MSG"      # commit pending manual edits with custom message
 ```
 
-Multi-line bodies from a shell are easiest with `$'...\n...'` quoting, or by passing `-` as the body and piping in stdin:
+Multi-line bodies from a shell are easiest by repeating `-e`, however, it's also possible to use `$'...\n...'` quoting, or by passing `-` as the body and piping in stdin:
 
 ```sh
 tephra add -T TOPIC -t "Title" -e $'first line\nsecond line'
